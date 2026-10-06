@@ -130,8 +130,7 @@
     const b = e.target.closest(".btn,.chip,.rail-btn"); if (!b) return;
     const r = b.getBoundingClientRect(), s = document.createElement("span"), size = Math.max(r.width, r.height);
     s.className = "ripple"; s.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - r.left - size / 2}px;top:${e.clientY - r.top - size / 2}px`;
-    if (getComputedStyle(b).position === "static") b.style.position = "relative";
-    b.style.overflow = "hidden"; b.appendChild(s); setTimeout(() => s.remove(), 700);
+    b.appendChild(s); setTimeout(() => s.remove(), 700);
   });
 
   /* ---------- 3D-нахил карток ---------- */
