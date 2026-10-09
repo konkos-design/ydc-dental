@@ -10,20 +10,7 @@
     set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
   };
 
-  /* ---------- прелоадер (лише перший візит у сесії) ---------- */
-  const pre = $(".preloader");
-  if (pre) {
-    if (store.get("ydc-pre") || reduce) { pre.remove(); document.documentElement.classList.add("is-ready"); }
-    else {
-      const cnt = $(".preloader__count", pre); let n = 0;
-      const t = setInterval(() => { n = Math.min(100, n + Math.ceil(Math.random() * 12)); if (cnt) cnt.textContent = n + "%"; if (n >= 100) clearInterval(t); }, 90);
-      const done = () => { store.set("ydc-pre", "1"); if (cnt) cnt.textContent = "100%"; if (pre.classList.contains("is-done")) return; pre.classList.add("is-done"); setTimeout(() => { document.documentElement.classList.add("is-ready"); document.dispatchEvent(new Event("ydc:ready")); }, 450); setTimeout(() => pre.remove(), 1300); };
-      const start = Date.now();
-      const finish = () => setTimeout(done, Math.max(0, 1500 - (Date.now() - start)));
-      if (document.readyState === "complete") finish(); else window.addEventListener("load", finish);
-      setTimeout(done, 3500);
-    }
-  } else document.documentElement.classList.add("is-ready");
+  document.documentElement.classList.add("is-ready");
 
   /* ---------- розбивка заголовків на слова ---------- */
   $$("[data-split]").forEach(el => {
@@ -104,22 +91,13 @@
   const setMenu = open => {
     document.body.classList.toggle("menu-open", open); document.body.classList.toggle("is-locked", open);
     if (burger) burger.setAttribute("aria-expanded", open);
+    const menu=$(".mmenu");if(menu){menu.setAttribute("aria-hidden",String(!open));menu.inert=!open;}
     if (open && header) header.classList.remove("is-hidden");
   };
+  setMenu(false);
   if (burger) burger.addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
   $$(".mmenu a").forEach(a => a.addEventListener("click", () => setMenu(false)));
   document.addEventListener("keydown", e => { if (e.key === "Escape") { setMenu(false); closeModal(); closeLb(); } });
-
-  /* ---------- курсор ---------- */
-  if (fine && !reduce) {
-    const c = document.createElement("div"), d = document.createElement("div");
-    c.className = "cursor"; d.className = "cursor-dot"; document.body.append(c, d);
-    let mx = -100, my = -100, cx = -100, cy = -100;
-    document.addEventListener("mousemove", e => { mx = e.clientX; my = e.clientY; d.style.transform = `translate(${mx}px,${my}px)`; c.classList.add("is-on"); d.classList.add("is-on"); });
-    document.addEventListener("mouseleave", () => { c.classList.remove("is-on"); d.classList.remove("is-on"); });
-    const loop = () => { cx += (mx - cx) * .18; cy += (my - cy) * .18; c.style.transform = `translate(${cx}px,${cy}px)`; requestAnimationFrame(loop); }; loop();
-    document.addEventListener("mouseover", e => { c.classList.toggle("is-hover", !!e.target.closest("a,button,.ba,.g-item,input,select,textarea,[data-cursor]")); });
-  }
 
   /* ---------- магнітні кнопки + ripple ---------- */
   if (fine && !reduce) $$("[data-magnetic]").forEach(b => {
@@ -156,18 +134,20 @@
 
   /* ---------- до / після ---------- */
   $$(".ba").forEach(ba => {
-    let active = false;
-    const set = x => { const r = ba.getBoundingClientRect(); const p = Math.max(0, Math.min(100, (x - r.left) / r.width * 100)); ba.style.setProperty("--pos", p + "%"); };
-    ba.addEventListener("pointerdown", e => { active = true; set(e.clientX); if (e.pointerType === "mouse") ba.setPointerCapture(e.pointerId); });
+    let active = false, touched = false;
+    ba.setAttribute("role","slider"); ba.setAttribute("aria-label","Порівняння до та після"); ba.setAttribute("aria-valuemin","0"); ba.setAttribute("aria-valuemax","100"); ba.setAttribute("aria-valuenow","50");
+    const value = p => {ba.style.setProperty("--pos",p+"%");ba.setAttribute("aria-valuenow",String(Math.round(p)));};
+    const set = x => { const r = ba.getBoundingClientRect(); const p = Math.max(0, Math.min(100, (x - r.left) / r.width * 100)); touched=true; value(p); };
+    ba.addEventListener("pointerdown", e => { active = true; touched = true; set(e.clientX); if (e.pointerType === "mouse") ba.setPointerCapture(e.pointerId); });
     ba.addEventListener("pointermove", e => { if (active || e.pointerType === "mouse" && fine && e.buttons === 0 && ba.dataset.hover !== "off") { if (active) set(e.clientX); } });
     ba.addEventListener("pointerup", () => active = false);
     ba.addEventListener("pointercancel", () => active = false);
     ba.addEventListener("touchmove", e => { if (e.touches[0]) set(e.touches[0].clientX); }, { passive: true });
     ba.setAttribute("tabindex", "0");
-    ba.addEventListener("keydown", e => { const cur = parseFloat(getComputedStyle(ba).getPropertyValue("--pos")) || 50; if (e.key === "ArrowLeft") ba.style.setProperty("--pos", Math.max(0, cur - 5) + "%"); if (e.key === "ArrowRight") ba.style.setProperty("--pos", Math.min(100, cur + 5) + "%"); });
+    ba.addEventListener("keydown", e => {const steps={ArrowLeft:-5,ArrowDown:-5,ArrowRight:5,ArrowUp:5}; if(!(e.key in steps) && e.key!=="Home" && e.key!=="End")return; e.preventDefault();touched=true;const cur=Number(ba.getAttribute("aria-valuenow"));value(e.key==="Home"?0:e.key==="End"?100:Math.max(0,Math.min(100,cur+steps[e.key])));});
     // підказка-анімація при появі
     if (!reduce && "IntersectionObserver" in window) {
-      const o = new IntersectionObserver(en => { if (en[0].isIntersecting) { o.disconnect(); let t0 = null; const anim = t => { if (!t0) t0 = t; const p = (t - t0) / 1600; if (p > 1 || active) return; ba.style.setProperty("--pos", (50 + Math.sin(p * Math.PI * 2) * 18) + "%"); requestAnimationFrame(anim); }; setTimeout(() => requestAnimationFrame(anim), 500); } }, { threshold: .6 });
+      const o = new IntersectionObserver(en => { if (en[0].isIntersecting) { o.disconnect(); let t0 = null; const anim = t => { if (!t0) t0 = t; const p = (t - t0) / 1600; if (p > 1 || touched) return; value(50 + Math.sin(p * Math.PI * 2) * 18); requestAnimationFrame(anim); }; setTimeout(() => requestAnimationFrame(anim), 500); } }, { threshold: .6 });
       o.observe(ba);
     }
   });
@@ -186,8 +166,9 @@
 
   /* ---------- статус роботи ---------- */
   const H = (window.YDC && window.YDC.hours) || {};
+  function kyivNow(){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Kyiv',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const get=k=>parts.find(p=>p.type===k).value;return {d:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(get('weekday')),h:Number(get('hour'))+Number(get('minute'))/60};}
   function statusNow() {
-    const now = new Date(); const d = now.getDay(), h = now.getHours() + now.getMinutes() / 60, today = H[d];
+    const {d,h}=kyivNow(), today = H[d];
     if (Array.isArray(today) && h >= today[0] && h < today[1]) return { cls: "", txt: `Зараз відчинено · до ${today[1]}:00` };
     if (today === "appt") return { cls: "is-appt", txt: "Субота — за попереднім записом" };
     // наступне відкриття
@@ -198,70 +179,23 @@
     return { cls: "is-closed", txt: "Зачинено" };
   }
   $$("[data-open-status]").forEach(el => { const s = statusNow(); const dot = el.querySelector(".dot"); if (dot) dot.className = "dot " + s.cls; const t = el.querySelector("[data-status-text]"); if (t) t.textContent = s.txt; });
-  $$("[data-hours] [data-day]").forEach(r => { if (+r.dataset.day === new Date().getDay()) r.classList.add("is-today"); });
+  $$("[data-hours] [data-day]").forEach(r => { if (+r.dataset.day === kyivNow().d) r.classList.add("is-today"); });
 
   /* ---------- модальні вікна ---------- */
   let lastFocus = null;
-  function openModal(id) { const m = document.getElementById(id); if (!m) return; lastFocus = document.activeElement; m.classList.add("is-open"); m.setAttribute("aria-hidden", "false"); document.body.classList.add("is-locked"); setTimeout(() => { const f = m.querySelector("input,button.modal__close"); if (f && fine) f.focus(); }, 300); }
+  function openModal(id) { const m = document.getElementById(id); if (!m) return; lastFocus = document.activeElement; m.classList.add("is-open"); m.setAttribute("aria-hidden", "false"); document.body.classList.add("is-locked"); setTimeout(() => { const f = m.querySelector("input,button.modal__close"); if (f) f.focus(); }, 300); }
   function closeModal() { $$(".modal.is-open").forEach(m => { m.classList.remove("is-open"); m.setAttribute("aria-hidden", "true"); }); if (!document.body.classList.contains("menu-open")) document.body.classList.remove("is-locked"); if (lastFocus) lastFocus.focus({ preventScroll: true }); }
   window.YDCModal = { open: openModal, close: closeModal };
   document.addEventListener("click", e => {
-    const b = e.target.closest("[data-book]");
-    if (b) {
-      e.preventDefault(); openModal("book");
-      const sel = $("#book select[name=service]"); if (sel && b.dataset.book) { sel.value = b.dataset.book; }
-      const dn = $("#book [name=doctor]"); if (dn) dn.value = b.dataset.doctor || "";
-      const hd = $("#book [data-doc-label]"); if (hd) hd.textContent = b.dataset.doctor ? "Лікар: " + b.dataset.doctor : "";
-      return;
-    }
     if (e.target.closest("[data-close]")) closeModal();
   });
 
-  /* ---------- форма запису ---------- */
-  $$("form[data-form]").forEach(form => {
-    const tel = form.querySelector("input[type=tel]");
-    if (tel) {
-      tel.addEventListener("focus", () => { if (!tel.value) tel.value = "+380 "; });
-      tel.addEventListener("input", () => {
-        let d = tel.value.replace(/\D/g, "");
-        if (d.startsWith("380")) d = d.slice(3); else if (d.startsWith("80")) d = d.slice(2);
-        if (d.startsWith("0")) d = d.slice(1);
-        const p = d.slice(0, 9);
-        let out = "+380"; if (p.length) out += " " + p.slice(0, 2); if (p.length > 2) out += " " + p.slice(2, 5); if (p.length > 5) out += " " + p.slice(5, 7); if (p.length > 7) out += " " + p.slice(7, 9);
-        tel.value = out;
-      });
-    }
-    form.addEventListener("submit", async e => {
-      e.preventDefault(); let ok = true;
-      form.querySelectorAll("[required]").forEach(inp => {
-        const f = inp.closest(".field"); let bad = !inp.value.trim();
-        if (inp.type === "tel") bad = inp.value.replace(/\D/g, "").length !== 12;
-        if (f) f.classList.toggle("is-error", bad); if (bad) ok = false;
-      });
-      if (!ok) { const first = form.querySelector(".is-error input,.is-error select"); if (first) first.focus(); return; }
-      const data = Object.fromEntries(new FormData(form).entries());
-      const btn = form.querySelector("[type=submit]"); if (btn) { btn.disabled = true; btn.style.opacity = .7; }
-      const endpoint = window.YDC_FORM_ENDPOINT || "";
-      try {
-        if (endpoint) await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(data) });
-      } catch (err) { /* мережа недоступна — показуємо повідомлення нижче */ }
-      const wrap = form.parentElement, succ = wrap.querySelector(".form-success");
-      if (succ) { const n = succ.querySelector("[data-name]"); if (n) n.textContent = data.name ? ", " + data.name.split(" ")[0] : ""; form.style.display = "none"; succ.classList.add("is-on"); }
-      if (btn) { btn.disabled = false; btn.style.opacity = ""; }
-    });
-    form.addEventListener("input", e => { const f = e.target.closest(".field"); if (f) f.classList.remove("is-error"); });
-  });
-  document.addEventListener("click", e => {
-    const r = e.target.closest("[data-form-reset]"); if (!r) return;
-    const wrap = r.closest(".form-wrap"); const f = wrap.querySelector("form"); f.reset(); f.style.display = ""; wrap.querySelector(".form-success").classList.remove("is-on");
-  });
-
   /* ---------- лайтбокс ---------- */
-  const lb = $(".lightbox"); let lbItems = [], lbIdx = 0;
+  const lb = $(".lightbox"); let lbItems = [], lbIdx = 0, lbFocus = null;
   function showLb(i) { if (!lb) return; lbIdx = (i + lbItems.length) % lbItems.length; const it = lbItems[lbIdx]; const img = $("img", lb); img.style.opacity = 0; img.onload = () => img.style.opacity = 1; img.src = it.href; img.alt = it.dataset.cap || ""; $(".lightbox__cap", lb).textContent = it.dataset.cap || ""; }
-  function closeLb() { if (lb && lb.classList.contains("is-open")) { lb.classList.remove("is-open"); document.body.classList.remove("is-locked"); } }
+  function closeLb() { if (lb && lb.classList.contains("is-open")) { lb.classList.remove("is-open"); lb.setAttribute("aria-hidden","true"); document.body.classList.remove("is-locked"); if(lbFocus) lbFocus.focus({preventScroll:true}); } }
   document.addEventListener("click", e => {
-    const g = e.target.closest(".g-item"); if (g && lb) { e.preventDefault(); lbItems = $$(".g-item:not(.is-hidden)"); showLb(lbItems.indexOf(g)); lb.classList.add("is-open"); document.body.classList.add("is-locked"); return; }
+    const g = e.target.closest(".g-item"); if (g && lb) { e.preventDefault(); lbItems = $$(".g-item:not(.is-hidden)"); showLb(lbItems.indexOf(g)); lbFocus = g; lb.classList.add("is-open"); lb.setAttribute("aria-hidden","false"); document.body.classList.add("is-locked"); setTimeout(() => {if(lb.classList.contains("is-open"))lb.querySelector(".lb-close").focus({preventScroll:true});}, 50); return; }
     if (e.target.closest(".lb-close") || e.target === lb) closeLb();
     if (e.target.closest(".lb-prev")) showLb(lbIdx - 1);
     if (e.target.closest(".lb-next")) showLb(lbIdx + 1);
@@ -274,7 +208,7 @@
     const target = group.dataset.filterGroup;
     group.addEventListener("click", e => {
       const chip = e.target.closest(".chip"); if (!chip) return;
-      $$(".chip", group).forEach(c => c.classList.toggle("is-active", c === chip)); chip.setAttribute("aria-pressed", "true");
+      $$(".chip", group).forEach(c => {c.classList.toggle("is-active", c === chip); c.setAttribute("aria-pressed",String(c === chip));}); chip.setAttribute("aria-pressed", "true");
       const f = chip.dataset.filter;
       $$(`${target} [data-tags]`).forEach(item => {
         const show = f === "all" || item.dataset.tags.split(" ").includes(f);
@@ -291,8 +225,18 @@
     const d = window.YDC_DOCTORS[+c.dataset.doc], svcs = (window.YDC_SERVICES || []).filter(s => d.svc.includes(s.id));
     const box = $("#doc .doc-modal"); if (!box) return;
     const base = c.dataset.base || "";
-    box.innerHTML = `<img src="${base}img/doctors/${d.img}.jpg" alt="${d.n}" width="535" height="736"><div><h3>${d.n}</h3><p class="doc-modal__role">${d.r}</p>${svcs.length ? `<p class="muted" style="margin-bottom:10px">Напрямки роботи:</p><ul>${svcs.map(s => `<li><a href="${base}poslugy.html#${s.id}">${s.title}</a></li>`).join("")}</ul>` : `<p class="muted">Запис на прийом за телефоном <a href="tel:${window.YDC.phone2}" style="font-weight:700;color:var(--ink)">${window.YDC.phone2View}</a></p>`}<button class="btn" data-book data-doctor="${d.n}"><span class="btn__txt"><span>Записатися до лікаря</span><span>Записатися до лікаря</span></span></button></div>`;
+    box.innerHTML = `<img src="${base}img/doctors/${d.img}.jpg" alt="${d.n}" width="535" height="736"><div><h3>${d.n}</h3><p class="doc-modal__role">${d.r}</p>${svcs.length ? `<p class="muted" style="margin-bottom:10px">Напрямки роботи:</p><ul>${svcs.map(s => `<li><a href="${base}poslugy.html#${s.id}">${s.title}</a></li>`).join("")}</ul>` : `<p class="muted">Запис на прийом за телефоном <a href="tel:${window.YDC.phone2}" style="font-weight:700;color:var(--ink)">${window.YDC.phone2View}</a></p>`}<a class="btn" href="tel:${d.svc.length ? window.YDC.phone : window.YDC.phone2}">Зателефонувати</a></div>`;
     openModal("doc");
+  });
+
+
+  document.addEventListener('keydown', e => {
+    if(e.key!=='Tab')return;
+    const dialog=document.querySelector('.lightbox.is-open,.modal.is-open');if(!dialog)return;
+    const items=Array.from(dialog.querySelectorAll('a[href],button,input,select,textarea,[tabindex="0"]')).filter(x=>!x.disabled && x.getClientRects().length);
+    if(!items.length)return;const first=items[0],last=items[items.length-1];
+    if(e.shiftKey && (document.activeElement===first || !dialog.contains(document.activeElement))){e.preventDefault();last.focus();}
+    else if(!e.shiftKey && (document.activeElement===last || !dialog.contains(document.activeElement))){e.preventDefault();first.focus();}
   });
 
   /* ---------- toast ---------- */
